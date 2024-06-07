@@ -1,10 +1,10 @@
-use na::{ ComplexField, DMatrix, RealField ,Complex};
+use na::{ Complex, ComplexField, DMatrix, MatrixView, RealField , Dyn,Dim};
 
 use super::gipsy_kings;
 
 
 
-fn all_close_cst_cpx<T : Copy + ComplexField + RealField>( mat_a : &DMatrix<Complex<T>>, b: T, eps : T) ->bool
+fn all_close_cst_cpx<T : Copy + ComplexField + RealField,R: Dim,C: Dim>( mat_a : &MatrixView<Complex<T>,R,C>, b: T, eps : T) ->bool
 {
     let mut max_dist:T = na::zero();
 
@@ -22,14 +22,13 @@ pub fn knv0_pass(ker_pole : &Vec<DMatrix<Complex<f64>>>,
     j : usize)
     {
         let transfer_matrix_not_j = transfer_matrix.clone().remove_column(j as usize);
-        let mut Q = gipsy_kings::full_QR::new(transfer_matrix_not_j).q();
+        let mut q = gipsy_kings::FullQr::new(transfer_matrix_not_j).q();
 
         let mat_ker_pj = ker_pole[j].clone() * ker_pole[j].transpose();
 
-        let mut yj = mat_ker_pj.view((0,0),mat_ker_pj.shape())* Q.columns_mut(Q.shape().1-1,1);
+        let mut yj = mat_ker_pj.view((0,0),mat_ker_pj.shape())* q.columns_mut(q.shape().1-1,1);        
 
-
-        if !all_close_cst_cpx::<f64>(&yj,0.0, f64::EPSILON)
+        if !all_close_cst_cpx::<f64,Dyn,Dyn>(&yj.view((0,0),yj.shape()),0.0, f64::EPSILON)
         {
             yj.scale_mut(1.0/yj.norm());
 
@@ -52,7 +51,7 @@ pub fn knv0_loop(ker_pole : &Vec<DMatrix<Complex<f64>>>,
         
         while nb_try < maxiter && !stop
         {
-            let mut det_transfer_matrixb = transfer_matrix.determinant().abs();
+            let det_transfer_matrixb = transfer_matrix.determinant().abs();
             for j in 0..mat_b.shape().0
             {
                 knv0_pass(ker_pole, transfer_matrix, j);
