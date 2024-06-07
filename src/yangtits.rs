@@ -3,7 +3,7 @@ use num_traits::Zero;
 
 use na::{Complex, ComplexField,  DMatrix, DVector};
 
-use crate::{hstack, secondary_funcs::*};
+use crate::{hstack,vstack, secondary_funcs::*};
 
 use super::gipsy_kings;
 
@@ -134,8 +134,7 @@ pub fn YT_loop(ker_pole : &Vec<DMatrix<Complex<f64>>>, transfer_matrix : &mut DM
                 
                 else
                 {
-                    println!("{:#?} {:?} {:?}",update_order,(i,j),transfer_matrix.shape());
-                    let transfer_matrix_not_i_j =  transfer_matrix.clone().remove_column(j as usize).remove_row(i as usize);
+                    let transfer_matrix_not_i_j =  transfer_matrix.clone().remove_column(j as usize).remove_column(i as usize);
                     let Q = gipsy_kings::FullQr::new(transfer_matrix_not_i_j).q();
                     
                     if poles[i as usize].im == 0.0
@@ -145,15 +144,17 @@ pub fn YT_loop(ker_pole : &Vec<DMatrix<Complex<f64>>>, transfer_matrix : &mut DM
                     }
                     else 
                     {
-                        assert!(poles[i as usize].im==0.0, "mixing real and complex in YT_real");
+                        assert!(poles[j as usize].im!=0.0, "mixing real and complex in YT_real");
+                        println!("{} {} {} {} {}", &ker_pole[i as usize],Q,transfer_matrix,i,j);
                         _yt_complex(&ker_pole, Q, transfer_matrix, i as usize, j as usize);
+                        panic!("BITE");
                     }
                     
                     
                 }
                 
                 let det_transfer_matrix = transfer_matrix.determinant().abs().max(f64::EPSILON.sqrt());
-                cur_rtol = (det_transfer_matrix-det_transfermatrixb)/det_transfer_matrix;
+                cur_rtol =((det_transfer_matrix-det_transfermatrixb)/det_transfermatrixb);
                 
                 if cur_rtol < rtol && det_transfer_matrix > f64::EPSILON.sqrt()
                 {
@@ -177,7 +178,7 @@ pub fn YT_loop(ker_pole : &Vec<DMatrix<Complex<f64>>>, transfer_matrix : &mut DM
         let v = q_mat.column(q_mat.shape().1-1);
         
         let (rows, _) = transfer_matrix.shape();
-        
+
         let m = &ker_pole[i].transpose()* ( u*v.transpose() - v*u.transpose()) * &ker_pole[j];
         let svd_m = m.svd(true,true);
         let (um,vm) = (svd_m.u.unwrap().transpose(),svd_m.v_t.unwrap().transpose());
@@ -191,7 +192,7 @@ pub fn YT_loop(ker_pole : &Vec<DMatrix<Complex<f64>>>, transfer_matrix : &mut DM
         let ker_pole_mu_nu : DMatrix<Complex<f64>>;
         
         let (ci,cj) = (transfer_matrix.column(i),transfer_matrix.column(j));
-        let transfer_matrix_j_mo_transfer_matrix_j = crate::vstack![&ci,&cj];
+        let transfer_matrix_j_mo_transfer_matrix_j = crate::vstack![ci,cj];
         
         if (svd_m.singular_values[0]-svd_m.singular_values[1]).abs() > 1e-8
         {
@@ -239,28 +240,29 @@ pub fn YT_loop(ker_pole : &Vec<DMatrix<Complex<f64>>>, transfer_matrix : &mut DM
         let ui = q_mat.column(q_mat.shape().1-1).scale(2.0.sqrt());
         let mut u = DMatrix::<Complex<f64>>::zeros(q_mat.shape().0,1);
         for i in 0..q_mat.shape().0
-        { u[i] = ur[i]* Complex::i()*ui[i];}
+        { u[i] = ur[i] + ui[i]*Complex::i();}
         
         
         let ker_pole_ij = &ker_pole[i];
-        let m = ker_pole_ij.transpose().conjugate() * (&u*&u.conjugate().transpose()) - &u.conjugate()*&u.transpose()*ker_pole_ij;
+        let m = ker_pole_ij.transpose().conjugate() * (&u*&u.conjugate().transpose() - &u.conjugate()*&u.transpose())*ker_pole_ij;
         
         let s_eig_m = m.symmetric_eigen();
         let (e_val, e_vec) = (s_eig_m.eigenvalues, s_eig_m.eigenvectors);
         
-        let n_eigs = e_val.ncols();
+        let n_eigs = e_val.nrows();
         let mut e_val_idx = Vec::<usize>::with_capacity(n_eigs); //ordering which would sort e_val by modulus
         for i in 0..e_val.len() { e_val_idx.push(i);}
         e_val_idx.sort_by(|i,j| e_val[*i].modulus_squared().partial_cmp(&e_val[*j].modulus_squared()).unwrap());
         
-        let mu1 = e_vec.row(e_val_idx[n_eigs-1]);
-        let mu2 = e_vec.row(e_val_idx[n_eigs-2]);
+        let mu1 = e_vec.columns(e_val_idx[n_eigs-1],1);
+        let mu2 = e_vec.columns(e_val_idx[n_eigs-2],1);
         
-        let mut transfer_matrix_j_mo_transfer_matrix_j = DMatrix::<Complex<f64>>::zeros(1, transfer_matrix.ncols());
-        for row in 0..transfer_matrix.ncols()
+        let mut transfer_matrix_j_mo_transfer_matrix_j = DMatrix::<Complex<f64>>::zeros(transfer_matrix.nrows(),1);
+        for row in 0..transfer_matrix.nrows()
         {
             transfer_matrix_j_mo_transfer_matrix_j[row] = transfer_matrix[(row,i)]+transfer_matrix[(row,j)]*Complex::i();
         }
+
         
         let ker_pole_mu : DMatrix<Complex<f64>>;
         let mut transfer_matrix_i_j : DMatrix<Complex<f64>> = DMatrix::zeros(0,0);
@@ -273,7 +275,9 @@ pub fn YT_loop(ker_pole : &Vec<DMatrix<Complex<f64>>>, transfer_matrix : &mut DM
         else
         {    
             let mu1_mu2_matrix = hstack![mu1,mu2];
+
             ker_pole_mu = ker_pole_ij*mu1_mu2_matrix;
+            println!("{} {}",ker_pole_mu,transfer_matrix_j_mo_transfer_matrix_j);
             transfer_matrix_i_j = (&ker_pole_mu*&ker_pole_mu.transpose().conjugate())*transfer_matrix_j_mo_transfer_matrix_j;
         }
         

@@ -4,7 +4,7 @@ extern crate nalgebra as na;
 
 
 use num_traits::Zero;
-use na::{ zero, Complex, DMatrix, DVector };
+use na::{ zero, Complex, ComplexField, DMatrix, DVector };
 
 #[cfg(test)]
 use na::{dmatrix,dvector};
@@ -73,7 +73,7 @@ pub fn place_poles_f64(
     initial_transfer_matrix : Option<DMatrix<Complex<f64>>>,
 ) -> FullStateFeedBack {
         
-        let (_is_cpx,ordered_poles) = valid_inputs(mat_a, poles, rtol, maxiter,&method);
+        let ordered_poles = valid_inputs(mat_a, poles, rtol, maxiter,&method);
         let cpx_a = real_to_cpx(&mat_a);
         
         
@@ -198,12 +198,12 @@ pub fn place_poles_f64(
                 
             }
             
-            let stop;
+            let mut stop  = false;
             if rank_b >1
             {
                 match method
                 {
-                    EPoleMethod::YT => {  (stop,cur_rtol,nb_iter) = yangtits::YT_loop(&ker_pole,&mut transfer_matrix,poles,maxiter,rtol);},
+                    EPoleMethod::YT => {  (stop,cur_rtol,nb_iter) = yangtits::YT_loop(&ker_pole,&mut transfer_matrix,poles, maxiter,rtol);},
                     EPoleMethod::KNV0 => 
                     {
                         
@@ -251,7 +251,7 @@ pub fn place_poles_f64(
         
         
         let mut comp_poles = (mat_a - mat_b*&gain_matrix_re).complex_eigenvalues(); //sort computed poles by 
-        comp_poles = order_complex_poles(&comp_poles).1;
+        comp_poles = order_complex_poles(&comp_poles);
 
         let _err = (&comp_poles-&ordered_poles).norm();
         
@@ -270,87 +270,48 @@ pub fn place_poles_f64(
         
     }
     
-
-#[test]
-fn svdcheck()
-{
-    let mat = dmatrix![ 
-        0.16392308, -1.63535915, -0.84471624,  1.90584585,  1.22223669;
-        1.33882279,  0.6401222 ,  0.27215501,  0.33321721, -0.07478135;
-        0.32941376, -0.45005802,  0.74089024, -0.59396737,  1.23153441;
-        -1.65792534, -0.11407759,  0.54935731, -0.29308824,  1.04328475;
-        1.03143172,  0.77403473, -0.42167852, -0.26050874,  0.29815126];
-    let eigs = &mat.symmetric_eigen();
-    let eigvals : &[f64] = eigs.eigenvalues.as_slice();
-
-    let mut indices = Vec::<usize>::with_capacity(5); for i in 0..5 {indices.push(i);}
-    indices.sort_by(|x,y| eigvals[*x].partial_cmp(&eigvals[*y]).unwrap());
-
-    println!("{:?} {:?}",eigvals,indices);
-
-}
-
-
-#[test]
-fn basic_qr_test()
-{
-    let mat = dmatrix![ 
-        0.16392308, -1.63535915, -0.84471624,  1.90584585,  1.22223669;
-        1.33882279,  0.6401222 ,  0.27215501,  0.33321721, -0.07478135;
-        0.32941376, -0.45005802,  0.74089024, -0.59396737,  1.23153441;
-        -1.65792534, -0.11407759,  0.54935731, -0.29308824,  1.04328475;
-        1.03143172,  0.77403473, -0.42167852, -0.26050874,  0.29815126];
     
-    let mat_b : DMatrix<f64> = dmatrix! [
-    0.0,      5.679 ;
-    1.136,  1.136 ;
-    -0.0,      0.0    ;
-    -3.146,  0.0     ];
-    
-
-    let mat_big = gipsy_kings::FullQr::new(mat_b.clone());
-    let (q,r) = mat_big.unpack();
-    println!("{} {} {}",&q,&r, &q*&r);
-    
-    let (q,r) = mat_b.clone().qr().unpack();
-    println!("{} {} ",&q,&r);
-}
-
-#[test]
-fn scipy_test() 
-{
-    let mut mat_a = dmatrix![
-        1.380,  -0.4,  6.715, -5.676;
-        -0.5814, -4.290,   35.0,      0.6750;
-        1.18,   4.273,  -6.9,  5.893;
-        0.0480,  -4.273,   10.343, -2.104;
+    #[test]
+    fn scipy_test() 
+    {
+        let mut mat_a = dmatrix![
+        1.380,  -0.2077,  6.715, -5.676  ;
+        -0.5814, -4.290,   0.0,      0.6750 ;
+        1.067,   4.273,  -6.654,  5.893  ;
+        0.0480,  4.273,   1.343, -2.104  ;
         ];
-    
-    let mat_b = dmatrix![
-        90.0,  6.679;
-        1.136, 1.6;
-        -10.0, 0.0;
+        
+        let mat_b = dmatrix![
+        0.0,  5.679;
+        1.136, 1.136;
+        -0.0, 0.0;
         -3.146, 0.0;
         ];
-    let p = dvector![
-        Complex::new(-0.2,0.0), 
-        Complex::new(-0.5,0.0), 
-        Complex::new(-5.0566,0.0), 
-        Complex::new(-8.6659,0.0),
-        ];
-    
-    let mut fsf0 = place_poles_f64(&mat_a, &mat_b, &p, EPoleMethod::YT, 1e-3, 20,None);
-    println!("{}",fsf0);
-    //let mut Tmat = fsf0.X;
-    // for i in 0..100
-    // {
-    //     mat_a[(2,2)] = -4.290 + ((i as f64)*0.017/2.0).cos();
-    //     mat_a[(0,0)] = 1.380 + (( (i+20) as f64)*0.017/2.0).sin();
         
-    //     fsf0 = place_poles_f64(&mat_a, &mat_b, &p, EPoleMethod::KNV0, 1e-3, 20, None);
-    //     let fsfupd = place_poles_f64(&mat_a, &mat_b, &p, EPoleMethod::KNV0, 1e-3, 20, Some(Tmat));
-    //     Tmat = fsfupd.X;
-    //     println!("{} {} {} {}",fsfupd.nb_iter , fsf0.nb_iter, fsfupd.err , fsf0.err);
-    // }
-}
-
+        let p_real = dvector![
+        Complex::from_real(-0.2),
+        Complex::from_real(-0.5),
+        Complex::from_real( -5.0566),
+        Complex::from_real( -8.6659)];
+        let p_cpx = dvector![
+        Complex::new(-0.2,-1.0), 
+        Complex::new(-0.2,1.0), 
+        Complex::new(-5.0566,11.0), 
+        Complex::new(-5.0566,-11.0),
+        ];
+        
+        let mut fsf0 = place_poles_f64(&mat_a, &mat_b, &p_real, EPoleMethod::KNV0, 1e-3, 20,None);
+        println!("{}",fsf0);
+        let mut Tmat = fsf0.X;
+        // for i in 0..100
+        // {
+        //             mat_a[(2,2)] = -4.290 + ((i as f64)*0.017*5.0).cos();
+        //             mat_a[(0,0)] = 1.380 + (( (i+20) as f64)*0.017*5.0).sin();
+            
+        //             fsf0 = place_poles_f64(&mat_a, &mat_b, &p_real, EPoleMethod::KNV0, 1e-3, 20, None);
+        //             let fsfupd = place_poles_f64(&mat_a, &mat_b, &p_real, EPoleMethod::KNV0, 1e-3, 20, Some(Tmat));
+        //             Tmat = fsfupd.X;
+        //             println!("{} {} {} {}",fsfupd.nb_iter , fsf0.nb_iter, fsfupd.err , fsf0.err);
+        //         }
+        } 
+        

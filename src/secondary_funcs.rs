@@ -2,6 +2,7 @@ use core::panic;
 
 
 use na::{Complex, ComplexField, DMatrix, DVector, RealField };
+use num_traits::real;
 
 use super::EPoleMethod;
 
@@ -32,46 +33,49 @@ pub fn cpx_to_real<T : RealField + Copy>(cp_mat : &DMatrix<Complex<T>>) -> DMatr
 }
 
 //check validity of inputs for the place_poles function. less checks than in Python since Rust less dynamic.
-pub fn valid_inputs<T:ComplexField+PartialOrd>(mat_a : &DMatrix<T> , poles : &DVector<Complex<T>>, rtol : T, maxiter: u32 , method : &EPoleMethod)
--> (bool, DVector<Complex<T>>)
+pub fn valid_inputs(mat_a : &DMatrix<f64> , poles : &DVector<Complex<f64>>, rtol :f64, maxiter: u32 , method : &EPoleMethod)
+-> DVector<Complex<f64>>
 {
     if !mat_a.is_square() {panic!("A must be square");}
     if poles.shape().0 != mat_a.shape().0 {panic!( "Dimension mismatch : A has {} poles, {} provided",mat_a.shape().0,poles.shape().0);}
     if maxiter < 1 {        panic!("maxiter must be at least equal to 1") ;}
-    if rtol > T::one() {panic!("rtol can't be greater than 1");}
+    if rtol > 1.0 {panic!("rtol can't be greater than 1");}
     
-    if !poles.iter().all(|x| x.im.is_zero()) && matches!(method,EPoleMethod::KNV0) {panic!("KNV0 Method only works with Real poles")};
+    if !poles.iter().all(|x| x.im==0.0) && matches!(method,EPoleMethod::KNV0) {panic!("KNV0 Method only works with Real poles")};
     
     order_complex_poles(poles)
 }
 
-pub fn order_complex_poles<T:ComplexField+PartialOrd>(poles : &DVector::<Complex<T>>) -> (bool, DVector<Complex<T>>)
+pub fn order_complex_poles(poles : &DVector::<Complex<f64>>) -> DVector<Complex<f64>>
 {
     
-    let mut actually_cpx = false;
-    let mut ordered_poles = poles.clone();
-    
-    
-    ordered_poles.as_mut_slice().sort_by(|a, b| a.re.partial_cmp(&b.re).unwrap());
-    
-    for _i in 0..ordered_poles.shape().0
+    let mut real_poles = Vec::new();
+    let mut cpx_poles = Vec::new();
+    for i in 0..poles.len()
     {
-        
-        if !ordered_poles[_i].im.is_zero(){ actually_cpx = true;}
-        
-        let mut conj_present = false;
-        for _j in 0.. ordered_poles.shape().0
+        if poles[i].im == 0.0 { real_poles.push(poles[i])}
+        else if poles[i].im <0.0 {cpx_poles.push(poles[i]);}
+    }
+    real_poles.sort_by(|x,y| x.re.partial_cmp(&y.re).unwrap());
+    cpx_poles.sort_by(|x,y| x.re.partial_cmp(&y.re).unwrap());
+
+    let mut valid_cpx_poles = Vec::with_capacity(cpx_poles.len());
+    for i in 0..cpx_poles.len()
+    {
+        for j in i..cpx_poles.len()
         {
-            if ordered_poles[_j] == ordered_poles[_i].conj()
+            if cpx_poles[i] == cpx_poles[j].conjugate() //add pole if conjugate present in list
             {
-                conj_present = true;
-                break;
+                if cpx_poles[i].im < 0.0 {valid_cpx_poles.push(cpx_poles[i]); valid_cpx_poles.push(cpx_poles[j]);} //respect cpx lexicographic sorting order.
+                else {valid_cpx_poles.push(cpx_poles[j]); valid_cpx_poles.push(cpx_poles[i]);}
             }
         }
-        if conj_present == false {panic!("complex poles must come in conjugate pairs");}
     }
     
-    (actually_cpx , ordered_poles)
+    let ordered_poles = [real_poles,valid_cpx_poles].concat();
+    if ordered_poles.len() != poles.len() {panic! ("Complex poles must come with their conjugates");}
+    
+    DVector::from_vec(ordered_poles)
 }
 
 
@@ -100,7 +104,6 @@ macro_rules! vstack {
                 total_rows += $matrix.shape().0;
             )*
             
-            println!("{} {}",total_rows,cols);
             let mut stacked = DMatrix::zeros(total_rows,cols);
             let mut rows_ind = 0;
             for i in 0..ref_row_vec.len()
@@ -129,7 +132,6 @@ macro_rules! hstack {
                 total_cols += $matrix.shape().1;
             )*
             
-            println!("{} {}",rows,total_cols);
             let mut stacked = DMatrix::zeros(rows,total_cols);
             let mut cols_ind = 0;
             for i in 0..ref_vec.len()
