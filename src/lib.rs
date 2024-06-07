@@ -2,8 +2,12 @@
 extern crate approx; // For the macro relative_eq!
 extern crate nalgebra as na;
 
+
 use num_traits::Zero;
-use na::{ zero, dmatrix,dvector, Complex, DMatrix, DVector };
+use na::{ zero, Complex, DMatrix, DVector };
+
+#[cfg(test)]
+use na::{dmatrix,dvector};
 
 mod secondary_funcs;
 mod gipsy_kings;
@@ -75,11 +79,11 @@ pub fn place_poles_f64(
         
         
         let mut cur_rtol = f64::zero();
-        let mut nb_iter = 0;
+        let mut nb_iter : u32 = 0;
         let mut gain_matrix : DMatrix<Complex<f64>>;
         let mut transfer_matrix : DMatrix<Complex<f64>>;
         
-        let (u,z) = gipsy_kings::full_QR::new(mat_b.clone()).unpack();
+        let (u,z) = gipsy_kings::FullQr::new(mat_b.clone()).unpack();
         
         
         let u = real_to_cpx(&u);
@@ -113,7 +117,7 @@ pub fn place_poles_f64(
                 
             }
             
-            gain_matrix = real_to_cpx(&gipsy_kings::full_QR::new(mat_b.clone()).solve(&(diag_poles-mat_a)).unwrap());
+            gain_matrix = real_to_cpx(&gipsy_kings::FullQr::new(mat_b.clone()).solve(&(diag_poles-mat_a)).unwrap());
             transfer_matrix = DMatrix::identity(mat_a.shape().0,mat_a.shape().0);
         }
         
@@ -143,7 +147,7 @@ pub fn place_poles_f64(
                 // println!("----{}------ {} {}",j, pole_space_j,(&cpx_a - &pole_eye));
                 
                 
-                let Q  = gipsy_kings::full_QR::new(pole_space_j.to_owned()).q();
+                let Q  = gipsy_kings::FullQr::new(pole_space_j.to_owned()).q();
                 
                 
                 
@@ -194,12 +198,12 @@ pub fn place_poles_f64(
                 
             }
             
-            let mut stop  = false;
+            let stop;
             if rank_b >1
             {
                 match method
                 {
-                    EPoleMethod::YT => { panic!("YT algo not yet implemented")},
+                    EPoleMethod::YT => {  (stop,cur_rtol,nb_iter) = yangtits::YT_loop(&ker_pole,&mut transfer_matrix,poles,maxiter,rtol);},
                     EPoleMethod::KNV0 => 
                     {
                         
@@ -266,8 +270,27 @@ pub fn place_poles_f64(
         
     }
     
-    
-    
+
+#[test]
+fn svdcheck()
+{
+    let mat = dmatrix![ 
+        0.16392308, -1.63535915, -0.84471624,  1.90584585,  1.22223669;
+        1.33882279,  0.6401222 ,  0.27215501,  0.33321721, -0.07478135;
+        0.32941376, -0.45005802,  0.74089024, -0.59396737,  1.23153441;
+        -1.65792534, -0.11407759,  0.54935731, -0.29308824,  1.04328475;
+        1.03143172,  0.77403473, -0.42167852, -0.26050874,  0.29815126];
+    let eigs = &mat.symmetric_eigen();
+    let eigvals : &[f64] = eigs.eigenvalues.as_slice();
+
+    let mut indices = Vec::<usize>::with_capacity(5); for i in 0..5 {indices.push(i);}
+    indices.sort_by(|x,y| eigvals[*x].partial_cmp(&eigvals[*y]).unwrap());
+
+    println!("{:?} {:?}",eigvals,indices);
+
+}
+
+
 #[test]
 fn basic_qr_test()
 {
@@ -284,12 +307,13 @@ fn basic_qr_test()
     -0.0,      0.0    ;
     -3.146,  0.0     ];
     
-    let mat_big = gipsy_kings::full_QR::new(mat_b.clone());
-    let (Q,R) = mat_big.unpack();
-    println!("{} {} {}",&Q,&R, &Q*&R);
+
+    let mat_big = gipsy_kings::FullQr::new(mat_b.clone());
+    let (q,r) = mat_big.unpack();
+    println!("{} {} {}",&q,&r, &q*&r);
     
-    let (Q,R) = mat_b.clone().qr().unpack();
-    println!("{} {} ",&Q,&R);
+    let (q,r) = mat_b.clone().qr().unpack();
+    println!("{} {} ",&q,&r);
 }
 
 #[test]
@@ -315,17 +339,18 @@ fn scipy_test()
         Complex::new(-8.6659,0.0),
         ];
     
-    let mut fsf0 = place_poles_f64(&mat_a, &mat_b, &p, EPoleMethod::KNV0, 1e-3, 20,None);
-    let mut Tmat = fsf0.X;
-    for i in 0..100
-    {
-        mat_a[(2,2)] = -4.290 + ((i as f64)*0.017/2.0).cos();
-        mat_a[(0,0)] = 1.380 + (( (i+20) as f64)*0.017/2.0).sin();
+    let mut fsf0 = place_poles_f64(&mat_a, &mat_b, &p, EPoleMethod::YT, 1e-3, 20,None);
+    println!("{}",fsf0);
+    //let mut Tmat = fsf0.X;
+    // for i in 0..100
+    // {
+    //     mat_a[(2,2)] = -4.290 + ((i as f64)*0.017/2.0).cos();
+    //     mat_a[(0,0)] = 1.380 + (( (i+20) as f64)*0.017/2.0).sin();
         
-        fsf0 = place_poles_f64(&mat_a, &mat_b, &p, EPoleMethod::KNV0, 1e-3, 20, None);
-        let fsfupd = place_poles_f64(&mat_a, &mat_b, &p, EPoleMethod::KNV0, 1e-3, 20, Some(Tmat));
-        Tmat = fsfupd.X;
-        println!("{} {} {} {}",fsfupd.nb_iter , fsf0.nb_iter, fsfupd.err , fsf0.err);
-    }
+    //     fsf0 = place_poles_f64(&mat_a, &mat_b, &p, EPoleMethod::KNV0, 1e-3, 20, None);
+    //     let fsfupd = place_poles_f64(&mat_a, &mat_b, &p, EPoleMethod::KNV0, 1e-3, 20, Some(Tmat));
+    //     Tmat = fsfupd.X;
+    //     println!("{} {} {} {}",fsfupd.nb_iter , fsf0.nb_iter, fsfupd.err , fsf0.err);
+    // }
 }
 
