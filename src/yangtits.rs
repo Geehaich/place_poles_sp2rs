@@ -145,19 +145,19 @@ pub fn YT_loop(ker_pole : &Vec<DMatrix<Complex<f64>>>, transfer_matrix : &mut DM
                 else
                 {
                     let transfer_matrix_not_i_j =  transfer_matrix.clone().remove_column(i.max(j)).remove_column(i.min(j));
-                    let Q = gipsy_kings::FullQr::new(transfer_matrix_not_i_j.clone()).q();
+                    let mut Q = gipsy_kings::FullQr::new(transfer_matrix_not_i_j.clone()).q();
 
                     //panic!("{} {}",&transfer_matrix_not_i_j.clone(),Q);
                     
                     if poles[i as usize].im == 0.0
                     {
                         assert!(poles[j as usize].im==0.0, "mixing real and complex in YT_real");
-                        _yt_real(&ker_pole,Q,transfer_matrix,i ,j);
+                        _yt_real(&ker_pole,Q,transfer_matrix,i,j);
                     }
                     else 
                     {
                         assert!(poles[j as usize].im!=0.0, "mixing real and complex in YT_real");
-                        _yt_complex(&ker_pole, Q, transfer_matrix, i as usize, j as usize);
+                        _yt_complex(&ker_pole, Q, transfer_matrix, i,j);
                         
                     }
                     
@@ -165,7 +165,7 @@ pub fn YT_loop(ker_pole : &Vec<DMatrix<Complex<f64>>>, transfer_matrix : &mut DM
                 }
                 
                 let det_transfer_matrix = transfer_matrix.determinant().abs().max(f64::EPSILON.sqrt());
-                cur_rtol =(det_transfer_matrix-det_transfermatrixb).abs()/det_transfermatrixb;
+                cur_rtol = (det_transfer_matrix-det_transfermatrixb)/det_transfermatrixb;
                 
                 if cur_rtol < rtol && det_transfer_matrix > f64::EPSILON.sqrt()
                 {

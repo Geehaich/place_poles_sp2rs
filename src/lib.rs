@@ -208,7 +208,7 @@ pub fn place_poles_f64(
             match method
             {
                 
-                EPoleMethod::YT => { (stop,cur_rtol,nb_iter) = yangtits::YT_loop(&ker_pole,&mut transfer_matrix,poles, maxiter,rtol);},
+                EPoleMethod::YT => { (stop,cur_rtol,nb_iter) = yangtits::YT_loop(&ker_pole,&mut transfer_matrix,&ordered_poles, maxiter,rtol);},
                 EPoleMethod::KNV0 => 
                 {
                     (stop,cur_rtol,nb_iter) = knv0::knv0_loop(&ker_pole,&mut transfer_matrix,mat_b,maxiter,rtol);
@@ -298,14 +298,14 @@ fn scipy_test()
     Complex::from_real( -5.0566),
     Complex::from_real( -8.6659)];
     let p_cpx = dvector![
-    Complex::new(-0.2,11.0), 
-    Complex::new(-0.2,-11.0), 
-    Complex::new(-38.1,-0.00001), 
-    Complex::new(-38.1,0.00001),
+    Complex::new(-0.2,1.0), 
+    Complex::new(-0.2,-1.0), 
+    Complex::new(-7.02,0.0), 
+    Complex::new(-0.001,0.0),
     ];
     
     let mut fsf0 = place_poles_f64(&mat_a, &mat_b, &p_cpx, EPoleMethod::YT, 1e-3, 20,None);
-    println!("{}",fsf0);
+    println!("{}",(mat_a-mat_b*fsf0.gain_matrix).complex_eigenvalues());
     // let mut Tmat = fsf0.X;
     // let mut rng = rand::thread_rng();
     // for i in 0..100
