@@ -59,15 +59,16 @@ pub fn order_complex_poles(poles : &DVector::<Complex<f64>>) -> DVector<Complex<
     real_poles.sort_by(|x,y| x.re.partial_cmp(&y.re).unwrap());
     cpx_poles.sort_by(|x,y| x.re.partial_cmp(&y.re).unwrap());
 
+
     let mut valid_cpx_poles = Vec::with_capacity(cpx_poles.len());
     for i in 0..cpx_poles.len()
     {
-        for j in i..cpx_poles.len()
+        for j in 0..poles.len()
         {
-            if cpx_poles[i] == cpx_poles[j].conjugate() //add pole if conjugate present in list
+            if cpx_poles[i] == poles[j].conj()//add pole if conjugate present in list
             {
-                if cpx_poles[i].im < 0.0 {valid_cpx_poles.push(cpx_poles[i]); valid_cpx_poles.push(cpx_poles[j]);} //respect cpx lexicographic sorting order.
-                else {valid_cpx_poles.push(cpx_poles[j]); valid_cpx_poles.push(cpx_poles[i]);}
+                valid_cpx_poles.push(cpx_poles[i]);
+                valid_cpx_poles.push(poles[j]); //respect cpx lexicographic sorting order.
             }
         }
     }

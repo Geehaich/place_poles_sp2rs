@@ -113,6 +113,7 @@ DefaultAllocator: Allocator<T, R, C> + Allocator<T, R> + Allocator<T, DimMinimum
             
             let mut res_rows = res.view_range_mut(i.., i..);
             refl.reflect_with_sign(&mut res_rows, self.diag[i].clone().signum());
+            //refl.reflect(&mut res_rows);
         }
         
         res.to_owned()
